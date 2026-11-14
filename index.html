@@ -606,8 +606,8 @@ function applyTheme(type){
   st.setProperty("--shell",sp.shell[0]);st.setProperty("--shell-deep",sp.shell[1]);st.setProperty("--shell-soft",sp.shell[2]);
   st.setProperty("--wall-a",sp.wall[0]);st.setProperty("--wall-b",sp.wall[1]);
 }
-// Tuned for about 10 minutes of play a day: roughly 5 days to 꼬마, 2 weeks to 어린이, a month to 어른.
-const STAGES=[{name:"아기",xp:0},{name:"꼬마",xp:250},{name:"어린이",xp:800},{name:"어른",xp:1800}];
+// Tuned for about 10 minutes of play a day: roughly a week to 꼬마, 3 weeks to 어린이, 6–7 weeks to 어른.
+const STAGES=[{name:"아기",xp:0},{name:"꼬마",xp:320},{name:"어린이",xp:1000},{name:"어른",xp:2300}];
 const FOODS=[
   {id:"milk",em:"🥛",nm:"우유",price:3,hunger:15,happy:3,health:2},
   {id:"apple",em:"🍎",nm:"사과",price:4,hunger:20,happy:4,health:4},

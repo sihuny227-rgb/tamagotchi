@@ -198,6 +198,10 @@ button:focus-visible,input:focus-visible{outline:3px solid #6aa8ff;outline-offse
 .grow-chart{margin-top:14px;background:var(--paper-2);border-radius:16px;padding:10px 12px}
 .grow-chart b{font-family:var(--font-display);font-weight:400;font-size:16px}
 .grow-chart svg{width:100%;height:auto;display:block;margin-top:6px}
+.pane-hint{display:block;font-size:12.5px;color:var(--ink-soft);margin-bottom:2px}
+.blk-model .cube{cursor:pointer}
+.blk-model .cube:active polygon{opacity:.6}
+#myModel{touch-action:manipulation;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
 .blk-board,#board{touch-action:manipulation;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
 .blk-pane.minus{background:#fff0f1;box-shadow:inset 0 0 0 3px var(--bad)}
 .blk-tools2{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:10px;align-items:center}
@@ -1985,7 +1989,8 @@ function closeSheet(){
   if(cb)cb();
   render();
 }
-$("#sheet").addEventListener("click",e=>{if(e.target.id==="sheet")closeSheet()});
+// tapping the dark background closes ordinary windows, but never a game in progress (only the ✕ button does)
+$("#sheet").addEventListener("click",e=>{if(e.target.id==="sheet"&&!gameOn)closeSheet()});
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&sheetOpen)closeSheet()});
 const live=()=>sheetOpen;
 
@@ -2225,9 +2230,12 @@ function isoSVG(h,n,o){
     for(let r=0;r<n;r++)for(let c=0;c<n;c++)for(let z=0;z<h[r][c];z++)cubes.push([r,c,z]);
     cubes.sort((A,B)=>(A[0]+A[1])-(B[0]+B[1])||A[2]-B[2]);
     cubes.forEach(([r,c,z])=>{
+      // with o.tap each box is one tappable group that knows its column
+      if(o.tap)s+=`<g class="cube" data-r="${r}" data-c="${c}">`;
       s+=`<polygon points="${pts([P(c,r+1,z+1),P(c+1,r+1,z+1),P(c+1,r+1,z),P(c,r+1,z)])}" fill="${col[2]}" stroke="#7a5a2a" stroke-opacity=".35" stroke-width="1.2"/>`;
       s+=`<polygon points="${pts([P(c+1,r,z+1),P(c+1,r+1,z+1),P(c+1,r+1,z),P(c+1,r,z)])}" fill="${col[1]}" stroke="#7a5a2a" stroke-opacity=".35" stroke-width="1.2"/>`;
       s+=`<polygon points="${pts([P(c,r,z+1),P(c+1,r,z+1),P(c+1,r+1,z+1),P(c,r+1,z+1)])}" fill="${col[0]}" stroke="#7a5a2a" stroke-opacity=".35" stroke-width="1.2"/>`;
+      if(o.tap)s+=`</g>`;
     });
   }
   const W=n*a+6,top=o.board?-6:-(maxH*hz+6),bottom=2*n*b+(o.board?26:24);
@@ -2249,57 +2257,41 @@ function genShape(n,max){
 function gameBlocks(p){
   gameOn=true;
   const LEVELS=[[2,2],[2,2],[3,2],[3,2],[3,3]];
-  let li=0,earned=0,tries=0,minus=false,mine,target,n,max,solved=0;
+  let li=0,earned=0,tries=0,mine,target,n,max,solved=0;
   const total=h=>h.flat().reduce((x,y)=>x+y,0);
+  const cellOf=t=>{const el=t&&t.closest&&t.closest("[data-r]");return el?{r:+el.dataset.r,c:+el.dataset.c}:null};
   function level(){
-    [n,max]=LEVELS[li];target=genShape(n,max);mine=[...Array(n)].map(()=>Array(n).fill(0));tries=0;minus=false;
+    [n,max]=LEVELS[li];target=genShape(n,max);mine=[...Array(n)].map(()=>Array(n).fill(0));tries=0;
     openSheet(`<h2>쌓기나무</h2><div class="hud"><span>${li+1} / ${LEVELS.length} 문제</span><span class="earn" id="bEarn">🪙 ${earned}</span></div>
       <div class="blk-target"><span class="pane-lbl">이 모양을 똑같이 만들어요</span>${isoSVG(target,n,{blue:true})}</div>
       <div class="blk-row">
-        <div class="blk-pane"><span class="pane-lbl">내가 만든 모양</span><div id="myModel"></div></div>
-        <div class="blk-pane" id="boardPane"><span class="pane-lbl" id="boardLbl">눌러서 쌓기</span><div id="board"></div></div>
+        <div class="blk-pane blk-model"><span class="pane-lbl">내가 만든 모양</span><span class="pane-hint">➖ 상자를 누르면 빠져요</span><div id="myModel"></div></div>
+        <div class="blk-pane"><span class="pane-lbl">바닥판</span><span class="pane-hint">➕ 칸을 누르면 쌓여요</span><div id="board"></div></div>
       </div>
       <div class="count-line"><span>필요한 블록 ${total(target)}개</span><span id="myCount">쌓은 블록 0개</span></div>
-      <div class="blk-tools2"><div class="blk-mode" id="bMode">👆 누르면 쌓기 · 꾹 누르면 빼기</div><button class="tool go" type="button" id="tCheck">다 했어요!</button></div>
+      <div class="blk-tools2"><div class="blk-mode">바닥판에서 쌓고, 내 모양에서 빼요</div><button class="tool go" type="button" id="tCheck">다 했어요!</button></div>
       <div class="msg" id="bMsg">숫자는 그 칸에 쌓은 블록 수예요</div>`,partial(p,()=>earned));
     gameOn=true;
-    draw();setMinus(false,true);
-    const board=$("#board");let lp=null,skipUntil=0;
-    const tileAt=t=>{const el=t&&t.closest&&t.closest("[data-r]");return el?{r:+el.dataset.r,c:+el.dataset.c}:null};
-    const startPress=(target,x,y)=>{
-      if(lp)return;const tile=tileAt(target);if(!tile)return;
-      lp={...tile,x,y,timer:setTimeout(()=>{if(!lp)return;lp.fired=true;
-        if(minus)setMinus(false);else{setMinus(true);removeAt(tile.r,tile.c)}
-      },480)};
-    };
-    const movePress=(x,y)=>{if(lp&&!lp.fired&&Math.hypot(x-lp.x,y-lp.y)>14){clearTimeout(lp.timer);lp=null}};
-    const endPress=()=>{if(!lp)return;clearTimeout(lp.timer);if(lp.fired)skipUntil=Date.now()+450;lp=null};
-    board.addEventListener("pointerdown",e=>startPress(e.target,e.clientX,e.clientY));
-    board.addEventListener("touchstart",e=>{const t=e.touches[0];if(t)startPress(e.target,t.clientX,t.clientY)},{passive:true});
-    board.addEventListener("pointermove",e=>movePress(e.clientX,e.clientY));
-    board.addEventListener("touchmove",e=>{const t=e.touches[0];if(t)movePress(t.clientX,t.clientY)},{passive:true});
-    ["pointerup","pointercancel","touchend","touchcancel","mouseup"].forEach(t=>board.addEventListener(t,endPress));
-    board.addEventListener("click",e=>{
-      if(Date.now()<skipUntil||(lp&&lp.fired))return;
-      const tile=tileAt(e.target);if(!tile)return;
-      const {r,c}=tile;
-      if(minus)removeAt(r,c);
-      else{if(mine[r][c]<3){mine[r][c]++;SFX.play("block")}else{SFX.play("no");$("#bMsg").textContent="한 칸에 3개까지 쌓을 수 있어요"}draw()}
+    draw();
+    // bottom board: tap a square to stack one more box on it
+    $("#board").addEventListener("click",e=>{
+      const cell=cellOf(e.target);if(!cell)return;
+      const {r,c}=cell;
+      if(mine[r][c]<3){mine[r][c]++;SFX.play("block")}else{SFX.play("no");$("#bMsg").textContent="한 칸에 3개까지 쌓을 수 있어요"}
+      draw();
     });
-    board.addEventListener("contextmenu",e=>e.preventDefault());
+    // my shape: tap any box to take one box off that column (boxes above drop down)
+    $("#myModel").addEventListener("click",e=>{
+      const cell=cellOf(e.target);if(!cell)return;
+      const {r,c}=cell;
+      if(mine[r][c]>0){mine[r][c]--;SFX.play("unblock")}
+      draw();
+    });
+    ["#board","#myModel"].forEach(s=>$(s).addEventListener("contextmenu",e=>e.preventDefault()));
     $("#tCheck").addEventListener("click",check);
   }
-  function removeAt(r,c){if(mine[r][c]>0){mine[r][c]--;SFX.play("unblock")}else{SFX.play("no");$("#bMsg").textContent="그 칸에는 뺄 블록이 없어요"}draw()}
-  function setMinus(on,quiet){
-    minus=on;
-    const pane=$("#boardPane"),mode=$("#bMode"),lbl=$("#boardLbl");if(!pane)return;
-    pane.classList.toggle("minus",on);mode.classList.toggle("minus",on);
-    mode.textContent=on?"➖ 빼기 중 · 꾹 누르면 다시 쌓기":"👆 누르면 쌓기 · 꾹 누르면 빼기";
-    lbl.textContent=on?"눌러서 빼기":"눌러서 쌓기";
-    if(!quiet){SFX.play(on?"unblock":"block");$("#bMsg").textContent=on?"빼기 모드예요! 누르는 칸의 블록이 하나씩 빠져요":"다시 쌓기 모드예요"}
-  }
   function draw(){
-    $("#myModel").innerHTML=isoSVG(mine,n,{});
+    $("#myModel").innerHTML=isoSVG(mine,n,{tap:true});
     $("#board").innerHTML=isoSVG(mine,n,{board:true,big:true});
     $("#myCount").textContent=`쌓은 블록 ${total(mine)}개`;
   }
@@ -2309,7 +2301,7 @@ function gameBlocks(p){
       const gain=tries===0?4:2;earned+=gain;solved++;SFX.play("correct");
       $("#bMsg").textContent=`똑같아요! 🎉 🪙 +${gain}`;$("#bEarn").textContent="🪙 "+earned;
       $("#sheetCard").querySelectorAll(".tool").forEach(b=>b.disabled=true);
-      $("#board").style.pointerEvents="none";
+      $("#board").style.pointerEvents="none";$("#myModel").style.pointerEvents="none";
       setTimeout(()=>{if(!live()||!$("#bMsg"))return;li++;
         if(li>=LEVELS.length){const bonus=solved===LEVELS.length&&earned>=LEVELS.length*4?5:0;earned+=bonus;finishGame(p,"쌓기나무 끝!",earned,`${solved}개의 모양을 만들었어요!${bonus?" 한 번에 다 맞힌 보너스 🪙 +5":""}`)}
         else level()},1400);

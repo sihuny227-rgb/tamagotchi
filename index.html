@@ -300,6 +300,8 @@ button:focus-visible,input:focus-visible{outline:3px solid #6aa8ff;outline-offse
 .game-card .em{font-size:38px;line-height:1.15}
 .game-card b{font-family:var(--font-display);font-weight:400;font-size:18px}
 .game-card small{color:var(--ink-soft);font-size:13px}
+.game-card.cool{opacity:.6;background:#f3eef1;border-style:dashed}
+.game-card.cool small{color:var(--bad);font-family:var(--font-display)}
 .stack{display:grid;gap:10px}
 .hud{display:flex;justify-content:space-between;align-items:center;font-family:var(--font-display);font-size:17px;margin-bottom:10px;font-variant-numeric:tabular-nums}
 .hud .earn{color:#a8760a}
@@ -1138,17 +1140,76 @@ function moodOf(p){
   if(p.happy>65&&p.hunger>45)return "happy";
   return "normal";
 }
-function needOf(p){
+/* What the pet says depends on how it feels. Babies babble; older pets talk.
+   Each line list is [baby lines, grown lines]; {o} is the owner's name. */
+const TALK={
+  sick:[["아야… 아야…","으앙… 아파","콜록… 맘마…"],["아파요… 약 주세요","콜록콜록… 머리가 뜨거워요","몸이 으슬으슬해요… 병원 가고 싶어요"]],
+  poop:[["응가! 응가!","으앙… 응가","응가 치워…"],["똥 쌌어요! 치워 주세요","으~ 냄새! 💩","방이 지저분해요, 치워 줄래요?"]],
+  hungry:[["맘마… 맘마…","응애… 맘마!","꼬르륵… 맘마"],["배고파요… 꼬르륵","밥 언제 줘요? 🍚","배에서 꼬르륵 소리가 나요","맛있는 거 먹고 싶어요~"]],
+  drowsy:[["코… 이불…","하암… 코 자…"],["이불 덮어 주세요 🛏️","눈이 스르르… 재워 주세요"]],
+  sleepy:[["하암… 쭈쭈…","잠와… 응애","코… 자…"],["졸려요… 토닥토닥 해 줘요","하아암~ 눈이 감겨요","기운이 없어요… 쉬고 싶어요"]],
+  dirty:[["찝찝… 응애","씻어… 씻어…"],["찝찝해요, 씻고 싶어요","몸이 간질간질해요 🫧","목욕하고 싶어요!"]],
+  bored:[["놀아… 놀아…","으앙… 심심","까꿍 해 줘!"],["심심해요! 놀아 주세요","나랑 놀아 줄래요?","재미있는 거 하고 싶어요 🎈"]],
+  weak:[["으응… 힘없어"],["몸이 좀 안 좋아요…","조금 힘이 없어요","푹 쉬고 잘 먹으면 나을 것 같아요"]],
+  // gentle hints when a meter is getting low
+  peckish:[["맘마?","냠냠 하고 싶어"],["조금 출출해요","간식 먹을 시간 아닐까요?","배가 살짝 고파요"]],
+  tired:[["하암…"],["살짝 졸려요","조금 쉬었다 놀까요?"]],
+  grubby:[["꼬질꼬질…"],["조금 꼬질꼬질해요","손발이 살짝 끈적해요"]],
+  meh:[["놀아 줘!"],["음… 뭐 하고 놀까?","같이 놀면 좋겠다~"]],
+  heavy:[["으응…"],["몸이 조금 무거워요","오늘은 살살 놀래요"]],
+  // happy lines when a meter is full
+  full:[["맘마 냠냠 조아!","배 빵빵!"],["배불러서 행복해!","배가 빵빵해요 😋","맛있게 먹었어요, 고마워요!"]],
+  joyful:[["꺄르르~","헤헤 💕","조아 조아!"],["오늘 너무 신나요!","{o} 최고! 💕","기분이 날아갈 것 같아요!"]],
+  lively:[["꺄르르! 뿡뿡!","바부바부!"],["기운이 펄펄 넘쳐요!","뛰어놀고 싶어요!","힘이 불끈불끈! 💪"]],
+  fresh:[["뽀송 조아!"],["뽀송뽀송 기분 좋아 ✨","깨끗해서 상쾌해요!"]],
+  healthy:[["튼튼!"],["튼튼 건강해요!","감기도 안 걸릴 것 같아요"]]
+};
+/* mini-games; the three marked cool can be played once every 10 minutes (counted per pet, from the moment the game starts) */
+const GAME_LIST=[
+  {g:"rps",em:"✊",nm:"가위바위보",sub:"이기면 🪙 4",cool:true},
+  {g:"word",em:"🔤",nm:"영어 단어",sub:"3단계 · 🪙 2~4"},
+  {g:"apple",em:"🍎",nm:"사과 따기",sub:"30초 콕콕!",cool:true},
+  {g:"blocks",em:"🧊",nm:"쌓기나무",sub:"모양 똑같이 만들기"},
+  {g:"math",em:"➕",nm:"더하기 빼기",sub:"맞히면 🪙 2~3"},
+  {g:"dice",em:"🎲",nm:"주사위 달리기",sub:"먼저 도착하면 🪙 8",cool:true}
+];
+const GAME_COOL=10*60000;
+const gameCoolLeft=(p,g)=>{const t=(p.gameAt&&p.gameAt[g])||0;return Math.max(0,GAME_COOL-(Date.now()-t))};
+const talk=(p,kind)=>{const L=TALK[kind][p.stage===0?0:1];return pick(L).replace("{o}",PETS[p.slot].owner)};
+let needCache={key:"",text:"",at:0};
+function needKind(p){
   if(p.sleeping)return null;
-  if(p.sick)return "아파요… 약 주세요";
-  if(p.poops.length)return "똥 쌌어요! 치워 주세요";
-  if(p.hunger<30)return "배고파요…";
-  if(p.drowsy>=3)return "이불 덮어 주세요";
-  if(p.energy<25)return "졸려요… 토닥토닥";
-  if(p.clean<35)return "찝찝해요, 씻고 싶어요";
-  if(p.happy<35)return "심심해요! 놀아 주세요";
-  if(medDue(p))return vaxDue(p)?"주사 맞으러 병원 가요 🏥":"건강검진 받을 때예요 🏥";
+  if(p.sick)return "sick";
+  if(p.poops.length)return "poop";
+  if(p.hunger<30)return "hungry";
+  if(p.drowsy>=3)return "drowsy";
+  if(p.energy<25)return "sleepy";
+  if(p.clean<35)return "dirty";
+  if(p.happy<35)return "bored";
+  if(p.health<45)return "weak";
+  if(medDue(p))return vaxDue(p)?"vax":"check";
   return null;
+}
+// the line stays the same while the need lasts, and changes to another phrasing every 20 seconds
+function needOf(p){
+  const k=needKind(p);
+  if(!k){needCache.key="";return null}
+  const key=p.slot+"|"+k;
+  if(key!==needCache.key||Date.now()-needCache.at>20000){
+    const text=k==="vax"?(p.stage===0?"주사… 병원…":"주사 맞으러 병원 가요 🏥"):k==="check"?(p.stage===0?"병원… 가요…":"건강검진 받을 때예요 🏥"):talk(p,k);
+    needCache={key,text,at:Date.now()};
+  }
+  return needCache.text;
+}
+// something to say when nothing is urgent: hints for meters getting low, happy lines for full ones
+function chatLine(p){
+  const c=[];
+  if(p.hunger<55)c.push("peckish");if(p.energy<45)c.push("tired");if(p.clean<55)c.push("grubby");if(p.happy<55)c.push("meh");if(p.health<70)c.push("heavy");
+  if(c.length&&Math.random()<0.7)return talk(p,pick(c));
+  const g=[];
+  if(p.hunger>85)g.push("full");if(p.happy>80)g.push("joyful");if(p.energy>80)g.push("lively");if(p.clean>90)g.push("fresh");if(p.health>90)g.push("healthy");
+  if(g.length)return talk(p,pick(g));
+  return p.stage===0?pick(["꺄르르~","바부바부!","헤헤"]):pick(["랄랄라~",`${PETS[p.slot].owner} 어디 있어?`,"히힛","같이 놀자!",`나는 ${p.name}!`]);
 }
 const alerting=p=>p&&!p.sleeping&&(medDue(p)||p.sick||p.poops.length>0||p.hunger<30||p.energy<25||p.happy<35||p.clean<35);
 function musicScene(){
@@ -1276,35 +1337,35 @@ function behave(){
     return;
   }
   if(p.sick){
-    if(r<0.45){anim("shiver",1400);say("콜록콜록…",1500);SFX.play("cough");burst("💦",2,{y:40})}
-    else if(r<0.65){anim("shiver",1200);say("으슬으슬 추워요…",1500)}
+    if(r<0.45){anim("shiver",1400);say(talk(p,"sick"),1600);SFX.play("cough");burst("💦",2,{y:40})}
+    else if(r<0.65){anim("shiver",1200);say(talk(p,"sick"),1600)}
     else if(r<0.8)walkTo(petX+rand(-10,10),110);
     return;
   }
   if(p.energy<25||p.drowsy>=3){
-    if(r<0.45){setMood("yawn",1400);anim("sigh",1400);say("하아암~",1400);SFX.play("yawn")}
+    if(r<0.45){setMood("yawn",1400);anim("sigh",1400);say(talk(p,"sleepy"),1600);SFX.play("yawn")}
     else if(r<0.75)anim("sway",1800);
     else walkTo(petX+rand(-14,14),95);
     return;
   }
   if(p.poops.length&&r<0.45){
     const near=p.poops.reduce((a,b)=>Math.abs(b.x-petX)<Math.abs(a.x-petX)?b:a);
-    setMood("surprised",1300);anim("wiggle",800);say(pick(["으~ 냄새!","똥 치워 주세요~","코를 막아요!"]),1500);
+    setMood("surprised",1300);anim("wiggle",800);say(talk(p,"poop"),1600);
     setTimeout(()=>walkTo(near.x<petX?petX+25:petX-25,40),700);
     return;
   }
   if(p.hunger<30&&r<0.5){
-    say(pick(["꼬르륵…","배고파요~","밥 언제 줘요?"]),1600);setMood("sad",1600);
+    say(talk(p,"hungry"),1700);setMood("sad",1600);
     burst("💭",1,{y:30});walkTo(80,60);return;
   }
-  if(p.clean<35&&r<0.4){anim("wiggle",900);say("간질간질…",1400);return}
-  if(p.happy<35&&r<0.5){anim("sigh",1500);say("심심해…",1500);setMood("sad",1500);return}
+  if(p.clean<35&&r<0.4){anim("wiggle",900);say(talk(p,"dirty"),1600);return}
+  if(p.happy<35&&r<0.5){anim("sigh",1500);say(talk(p,"bored"),1600);setMood("sad",1500);return}
   if(r<0.38)walkTo(rand(18,82));
   else if(r<0.5){hop();setMood("happy",900)}
   else if(r<0.6){setMood("wink",900);burst("✨",1,{y:35})}
   else if(r<0.68){anim("spin",700);setMood("happy",900)}
   else if(r<0.76){setMood("surprised",900);burst(pick(["❗","❓","🦋"]),1,{y:28})}
-  else if(r<0.84){say(pick(["랄랄라~",`${PETS[p.slot].owner} 어디 있어?`,"오늘 기분 좋아!","히힛","같이 놀자!"]),1600);setMood("happy",1600)}
+  else if(r<0.84){say(chatLine(p),1800);setMood(p.happy>55?"happy":"normal",1600)}
   else if(r<0.92){setDir(-facing);setTimeout(()=>setDir(-facing),700)}
   else anim("stretch",1000);
 }
@@ -1895,14 +1956,18 @@ const ACTIONS={
   games(p){
     if(!canPlay(p,"게임"))return;
     SFX.play("tap");
-    openSheet(`<h2>미니게임</h2><p class="sub">${josa(p.name,"이와","와")} 같이 놀고 코인을 벌어요!</p><div class="games-grid">
-      <button class="game-card" type="button" data-g="rps"><span class="em">✊</span><b>가위바위보</b><small>이기면 🪙 4</small></button>
-      <button class="game-card" type="button" data-g="word"><span class="em">🔤</span><b>영어 단어</b><small>3단계 · 🪙 2~4</small></button>
-      <button class="game-card" type="button" data-g="apple"><span class="em">🍎</span><b>사과 따기</b><small>30초 콕콕!</small></button>
-      <button class="game-card" type="button" data-g="blocks"><span class="em">🧊</span><b>쌓기나무</b><small>모양 똑같이 만들기</small></button>
-      <button class="game-card" type="button" data-g="math"><span class="em">➕</span><b>더하기 빼기</b><small>맞히면 🪙 2~3</small></button>
-      <button class="game-card" type="button" data-g="dice"><span class="em">🎲</span><b>주사위 달리기</b><small>먼저 도착하면 🪙 8</small></button></div>`);
-    $("#sheetCard").querySelectorAll("[data-g]").forEach(b=>b.addEventListener("click",()=>{SFX.play("tap");({rps:gameRPS,word:gameWord,apple:gameApple,blocks:gameBlocks,math:gameMath,dice:gameDice})[b.dataset.g](p)}));
+    if(!p.gameAt||typeof p.gameAt!=="object")p.gameAt={};
+    const card=gm=>{const left=gm.cool?gameCoolLeft(p,gm.g):0;
+      return `<button class="game-card${left?" cool":""}" type="button" data-g="${gm.g}"><span class="em">${gm.em}</span><b>${gm.nm}</b><small>${left?`⏳ ${Math.ceil(left/60000)}분 뒤에 다시`:gm.sub}</small></button>`};
+    openSheet(`<h2>미니게임</h2><p class="sub" id="gameMsg">${josa(p.name,"이와","와")} 같이 놀고 코인을 벌어요!</p><div class="games-grid">${GAME_LIST.map(card).join("")}</div>
+      <p class="sub" style="margin:12px 0 0;font-size:13.5px">🍎 사과 따기 · 🎲 주사위 달리기 · ✊ 가위바위보는 한 번 하면 10분 뒤에 다시 할 수 있어요.</p>`);
+    $("#sheetCard").querySelectorAll("[data-g]").forEach(b=>b.addEventListener("click",()=>{
+      const gm=GAME_LIST.find(x=>x.g===b.dataset.g);
+      const left=gm.cool?gameCoolLeft(p,gm.g):0;
+      if(left){SFX.play("no");const m=$("#gameMsg");m.textContent=`${gm.nm}${josa(gm.nm,"은","는").slice(gm.nm.length)} ${Math.ceil(left/60000)}분 뒤에 다시 할 수 있어요. 다른 게임을 해 볼까요?`;m.style.color="var(--bad)";return}
+      if(gm.cool){p.gameAt[gm.g]=Date.now();persist()}
+      SFX.play("tap");({rps:gameRPS,word:gameWord,apple:gameApple,blocks:gameBlocks,math:gameMath,dice:gameDice})[gm.g](p);
+    }));
   }
 };
 
@@ -2510,10 +2575,11 @@ function showMain(){$("#setup").hidden=true;$("#main").hidden=false;lastPetKey="
 })();
 function tapPet(p){
   if(p.sleeping){SFX.play("pat");anim("sway",1800);toast("쉿! 자고 있어요 🤫");return}
-  if(p.sick){anim("shiver",900);SFX.play("cough");say("콜록… 약 주세요",1400);return}
+  if(p.sick){anim("shiver",900);SFX.play("cough");say(talk(p,"sick"),1600);return}
   hop();burst("💗",2,{y:40});SFX.play("boing");setMood(pick(["happy","wink","surprised"]),1000);
-  const lines=[`안녕 ${PETS[p.slot].owner}야!`,"헤헤, 간지러워요!",`나는 ${p.name}!`,"오늘도 같이 놀자!","사랑해요 💕"];
-  say(needOf(p)||pick(lines),1500);
+  const k=needKind(p);
+  const greet=p.stage===0?pick(["꺄르르~","헤헤 💕"]):pick([`안녕 ${PETS[p.slot].owner}야!`,"헤헤, 간지러워요!","사랑해요 💕"]);
+  say(k&&k!=="vax"&&k!=="check"?talk(p,k):Math.random()<0.3?greet:chatLine(p),1700);
 }
 
 /* ---------- persistence ---------- */

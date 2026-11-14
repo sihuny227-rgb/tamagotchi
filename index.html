@@ -606,8 +606,8 @@ function applyTheme(type){
   st.setProperty("--shell",sp.shell[0]);st.setProperty("--shell-deep",sp.shell[1]);st.setProperty("--shell-soft",sp.shell[2]);
   st.setProperty("--wall-a",sp.wall[0]);st.setProperty("--wall-b",sp.wall[1]);
 }
-// Growth is slow on purpose: about 2 days to 꼬마, a week to 어린이, two weeks or more to 어른.
-const STAGES=[{name:"아기",xp:0},{name:"꼬마",xp:400},{name:"어린이",xp:1300},{name:"어른",xp:3000}];
+// Tuned for about 10 minutes of play a day: roughly 5 days to 꼬마, 2 weeks to 어린이, a month to 어른.
+const STAGES=[{name:"아기",xp:0},{name:"꼬마",xp:250},{name:"어린이",xp:800},{name:"어른",xp:1800}];
 const FOODS=[
   {id:"milk",em:"🥛",nm:"우유",price:3,hunger:15,happy:3,health:2},
   {id:"apple",em:"🍎",nm:"사과",price:4,hunger:20,happy:4,health:4},
@@ -662,12 +662,17 @@ const checkDue=p=>Date.now()-(medOf(p).checkAt||0)>=CHECK_DAYS*DAY;
 const vaxDue=p=>Date.now()-(medOf(p).vaxAt||0)>=VAX_DAYS*DAY;
 const vaxOn=p=>Date.now()-(medOf(p).vaxAt||0)<VAX_DAYS*DAY*1.5;
 const medDue=p=>checkDue(p)||vaxDue(p);
-const parentOf=()=>{if(!state.parent||typeof state.parent!=="object")state.parent={paused:false,limitMin:0,day:"",ms:0,bonus:0};return state.parent};
+// daily play time defaults to 10 minutes; older saves are moved to 10 once (a parent can still change it)
+const parentOf=()=>{
+  if(!state.parent||typeof state.parent!=="object")state.parent={paused:false,limitMin:10,limitV:2,day:"",ms:0,bonus:0};
+  const P=state.parent;if(P.limitV!==2){P.limitMin=10;P.limitV=2;P.warned=false}
+  return P;
+};
 const todayKey=()=>{const d=new Date();return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`};
 function rollDay(){const P=parentOf(),k=todayKey();if(P.day!==k){P.day=k;P.ms=0;P.bonus=0;P.warned=false}}
 const isPaused=()=>!!(state.parent&&state.parent.paused);
 const leftMs=()=>{const P=parentOf();return P.limitMin?P.limitMin*60000+(P.bonus||0)-(P.ms||0):Infinity};
-function growOf(p){const st=STAGES[p.stage],nx=STAGES[p.stage+1];return nx?clamp((p.xp-st.xp)/(nx.xp-st.xp),0,1):clamp((p.xp-st.xp)/3000,0,1)}
+function growOf(p){const st=STAGES[p.stage],nx=STAGES[p.stage+1];return nx?clamp((p.xp-st.xp)/(nx.xp-st.xp),0,1):clamp((p.xp-st.xp)/1500,0,1)}
 // Real-world sizes at 5 points: birth, start of 꼬마, 어린이, 어른, fully grown (cm and kg tables on SPECIES).
 // Growth runs between the points, so it is fast early on like real animals; a full tummy adds a little weight.
 function sizeOf(p){
@@ -2586,15 +2591,15 @@ function askParent(){
 }
 function parentPanel(){
   const P=parentOf(),box=$("#parentBox");
-  const opts=[0,15,30,45,60];
+  const opts=[0,10,15,20,30];
   const over=P.limitMin&&leftMs()<=0;
   box.innerHTML=`<span class="lbl">하루 놀이 시간</span>
     <div class="limit-opts">${opts.map(m=>`<button class="tool${(P.limitMin||0)===m?" on":""}" type="button" data-min="${m}">${m?m+"분":"제한 없음"}</button>`).join("")}</div>
-    <p style="font-size:14px">${P.limitMin?`하루 ${P.limitMin}분이 지나면 저절로 쉬는 시간이 돼요. 날짜가 바뀌면 다시 놀 수 있어요.`:"시간 제한 없이 놀아요. 그만할 때는 위의 ⏸ 쉬는 시간 버튼을 눌러요."}${over?"<br>지금 다시 놀기를 누르면 15분 더 놀 수 있어요.":""}</p>
+    <p style="font-size:14px">${P.limitMin?`하루 ${P.limitMin}분이 지나면 저절로 쉬는 시간이 돼요. 날짜가 바뀌면 다시 놀 수 있어요.`:"시간 제한 없이 놀아요. 그만할 때는 위의 ⏸ 쉬는 시간 버튼을 눌러요."}${over?"<br>지금 다시 놀기를 누르면 10분 더 놀 수 있어요.":""}</p>
     <button class="big-btn" type="button" id="resumeBtn">다시 놀기 ▶</button>`;
   box.querySelectorAll("[data-min]").forEach(b=>b.addEventListener("click",()=>{P.limitMin=+b.dataset.min;P.warned=false;persist();parentPanel()}));
   $("#resumeBtn").addEventListener("click",()=>{
-    if(P.limitMin&&leftMs()<=0)P.bonus=(P.bonus||0)+(-leftMs())+15*60000;
+    if(P.limitMin&&leftMs()<=0)P.bonus=(P.bonus||0)+(-leftMs())+10*60000;
     P.warned=false;resumeGame();
   });
 }
